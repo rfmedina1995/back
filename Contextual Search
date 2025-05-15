@@ -1,0 +1,42 @@
+
+(function execute() {
+    var contextualSearch = new global.VAGlobalContextualSearchUtil();
+    var response = contextualSearch.search(vaInputs.context.getDisplayValue(), vaInputs.user_input, vaInputs.kb_knowledge_base_2);
+    var success = contextualSearch.processSearchResponse(response);
+    if (!success) {
+        return;
+    }
+
+    vaVars.search_Id = response.searchId;
+    var relevantSearchResults = contextualSearch.processGeneralResults(response, vaVars.max_search_result_count, -2);
+    vaVars.searchResultCount = relevantSearchResults.length;
+    vaVars.search_result_json_string = JSON.stringify(relevantSearchResults);
+    vaVars.index = 0;
+
+    var searchResultSummary = {};
+    for (var key = 0; key < relevantSearchResults.length; key++) {
+        var id = relevantSearchResults[key].id;
+        var tableName = id.split(":")[0];
+        var sysId = id.split(":")[1];
+
+        if (tableName in searchResultSummary) {
+            var resultSysIDList = searchResultSummary[tableName];
+            resultSysIDList.push(sysId);
+            searchResultSummary[tableName] = resultSysIDList;
+        }
+
+        else {
+            searchResultSummary[tableName] = [sysId];
+        }
+    }
+    
+    vaVars.ctx_search_details = JSON.stringify(searchResultSummary);
+
+    vaVars.is_top_result_card_supported = false;
+    if (vaVars.searchResultCount > 0) {
+        vaVars.top_result_data = contextualSearch.processTopResultData(vaVars.search_result_json_string)
+        vaVars.is_top_result_card_supported = contextualSearch.isTopResultCardSupported(vaVars.top_result_data);
+    }
+    vaVars.portalName = gs.nil(vaInputs.portal) ? vaVars.portalName : vaInputs.portal;
+    return;
+})()
