@@ -1,0 +1,136 @@
+Create Ticket
+
+var TcVACreateTicketUtil = Class.create();
+
+TcVACreateTicketUtil.prototype = {
+
+	initialize: function () { },
+
+	createIncident: function (fieldValues, producerId, template, assignToLocal) {
+
+		/* **** example values for 'fieldValues' argument:
+
+			// Record producer submission value
+			{
+				caller_id: '[USERSYSID]',
+				demo_variable: 'Demo variable value',
+				other_variable: 'Another value'
+			}
+
+			// GlideRecord insert value
+			{
+				caller_id: '[USERSYSID]',
+				short_description: 'Test short description',
+				cmdb_ci: '988a5968479b35d0afadb604836d4301',
+				assignment_group: '89cc3556db919810ba2be02b13961954',
+				incident_category: 'a41b69d5dbf20054921dfbf9af96194f',
+			}
+
+		*/
+
+		var incDetails = {};
+		var fields = fieldValues || {};
+
+		if (JSUtil.nil(producerId)) { // no recorder producer id provided, create inc via GlideRecord insert
+
+			var incGr = new GlideRecord('incident');
+			incGr.initialize();
+
+			incGr.applyTemplate('Virtual Agent - Default Incident Values');
+
+			if (!(JSUtil.nil(template))) { // if template was provided, apply it now before potentially overwriting passed fieldValues with template values later
+				incGr.applyTemplate(template);
+			}
+
+
+			for (var name in fields) {
+				if (fields[name]) {
+					incGr.setValue(name, fields[name]);
+				}
+			}
+
+			if (assignToLocal) {
+				var localSupportGroup = new RoutingUtils(incGr).findLocalSupportGroup(caller);
+				incGr.setValue('assignment_group', localSupportGroup, 'TcVACreateINCUtil');
+			}
+
+			if (!incGr.assignment_group || incGr.assignment_group == '') {
+				incDetails.error = 'No assignment group provided/found';
+				return incDetails;
+			}
+
+			incDetails.sysid = incGr.insert();
+			incDetails.number = incGr.getValue('number');
+
+		} else { // if producer id was provided, create incident via sn_sc.CatItem's submitProducer() method
+
+			var producerVariables = {};
+
+			if (fields) {
+				for (var f in fields) {
+					if (fields[f]) {
+						producerVariables[f] = fields[f];
+					}
+				}
+			}
+
+			var incPayload = {
+				'sysparm_id': producerId,
+				'variables': producerVariables
+			};
+
+			var snCatItem = new sn_sc.CatItem(producerId);
+			var newInc = snCatItem.submitProducer(incPayload);
+
+			incDetails.sysid = newInc.sys_id;
+			incDetails.number = newInc.getValue('number');
+
+		}
+
+		return incDetails;
+	},
+
+	createRequest: function (fieldValues, catItemId) {
+
+		/* **** example value for 'fieldValues' argument:
+
+			{
+				requested_for: '[USERSYSID]',
+				demo_variable: 'Demo variable value',
+				other_variable: 'Another value'
+			}
+
+		*/
+
+		var returnVal = {};
+
+		if (JSUtil.nil(catItemId)) {
+			returnVal.error = 'Missing catalog item sys_id';
+			return returnVal;
+		}
+
+		var cart = new sn_sc.CartJS();
+
+		var cartId = cart.getCartID();
+		cart.empty(cartId);
+
+		var item = {
+			'sysparm_id': catItemId,
+			'sysparm_quantity': '1',
+			'variables': fieldValues
+		};
+
+		cart.addToCart(item);
+		cart.setRequestedFor(fieldValues.requested_for);
+		var checkoutInfo = cart.checkoutCart();
+
+		var requestInfo = cart.submitOrder(checkoutInfo);
+
+		requestInfo.requested_for = checkoutInfo.requested_for;
+		requestInfo.requested_for_name = checkoutInfo.requested_for_user;
+
+		return requestInfo;
+	},
+
+	type: 'TcVACreateTicketUtil'
+};
