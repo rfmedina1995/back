@@ -1,0 +1,109 @@
+var TcVAContentUtils = Class.create();
+TcVAContentUtils.prototype = {
+
+	initialize: function (context) {
+		this.device = context ? context.deviceType : ''; // e.g. 'mWeb' || 'Bot to Bot' || 'ios' || 'android'
+		this.is_webex = (this.device == 'Bot to Bot');
+		this.base_url = gs.getProperty('glide.servlet.uri'); // e.g. 'https://cigna.service-now.com/'
+		this.default_portal = gs.getProperty('sn_itsm_va.com.snc.itsm.virtualagent.portal_url'); // e.g. 'esc'
+		this.is_mobile = (this.device == 'ios' || this.device == 'android');
+		this.portal = this.is_mobile ? 'mesp' : this.default_portal;
+		this.base_portal_url = this.base_url + this.portal; // e.g. 'https://cigna.service-now.com/esc'
+	},
+
+	getPortalUrl: function () {
+		return this.base_portal_url;
+	},
+
+	//added functions for URL and HTML
+	getKbArticleUrl: function (number) {
+		var kbaLink = this.base_portal_url + '?id=kb_article&sysparm_article=' + number;
+
+		return kbaLink;
+	},
+
+	getKbArticleHTML: function (number, label) {
+		var kbaUrl = this.getKbArticleUrl(number),
+			el = '<a href="' + kbaUrl + '">' + (label || number) + '</a>';
+
+		return el;
+	},
+
+	getImageUrl: function (fileName) {
+		return this.base_url + fileName;
+	},
+
+	getUrlHTML: function (url, label) {
+		el = '<a href="' + url + '" target="_blank">' + label + '</a>';
+
+		return el;
+	},
+
+
+	getImageHTML: function (fileName, alt, styles) {
+		var imageCss = styles || 'width:100%;height:auto;',
+			altText = alt || '',
+			imgSrc = this.getImageUrl(fileName),
+			el = '<img src="' + imgSrc + '" alt="' + altText + '" style="' + imageCss + '" >';
+
+		return el;
+	},
+
+	getTicketCard: function (vaSystem, sys_id, card_data) {
+		var overrideValues = card_data || {};
+		var card = { title: 'Ticket not found', subtitle: '', url: '', fields: [] };
+		var fields = [];
+
+
+		if (overrideValues.fields) {
+			fields = overrideValues.fields;
+		}
+
+		var grTicket = new GlideRecord('task');
+
+		if (grTicket.get(sys_id)) {
+			var ticketType = grTicket.getRecordClassName();
+			var cardTitle = grTicket.getClassDisplayValue();
+			var cardSubtitle = grTicket.number.toString() + '➚';
+			var cardUrl = this.base_portal_url + '?id=ticket&table=' + ticketType + '&sys_id=' + sys_id;
+
+			if (!fields.length) {
+				fields.push({ 'fieldLabel': grTicket.getElement('short_description').getLabel(), 'fieldValue': grTicket.getDisplayValue('short_description') });
+				fields.push({ 'fieldLabel': grTicket.getElement('state').getLabel(), 'fieldValue': grTicket.getDisplayValue('state') });
+				if (ticketType == 'sc_req_item') {
+					// var catItemLabel = grTicket.getElement('cat_item').getLabel();
+					fields.push({ 'fieldLabel': 'Item', 'fieldValue': grTicket.ref_sc_req_item.cat_item.getDisplayValue() });
+				}
+
+				var now = new GlideDateTime();
+				var updated = new GlideDateTime(grTicket.getValue('sys_updated_on'));
+				var duration = GlideDateTime.subtract(updated, now)
+				var roundedDayPart = duration.getRoundedDayPart();
+				var elapsedTime = ''
+				if (roundedDayPart > 1) {
+					elapsedTime = roundedDayPart + ' days ago';
+				} else if (roundedDayPart == 1) {
+					elapsedTime = '1 day ago';
+				} else {
+					var durationDv = duration.getDisplayValue();
+					elapsedTime = durationDv.toLowerCase() + ' ago';
+				}
+
+				fields.push({ 'fieldLabel': grTicket.getElement('sys_updated_on').getLabel(), 'fieldValue': elapsedTime });
+			}
+
+			card.title = overrideValues.title || cardTitle;
+			card.subtitle = overrideValues.subtitle || cardSubtitle;
+			card.url = overrideValues.url || cardUrl;
+			card.fields = fields;
+		}
+
+		return vaSystem.renderCard('Card', JSON.stringify(card));
+	},
+
+	isWebex: function () {
+		return this.is_webex;
+	},
+
+	type: 'TcVAContentUtils'
+};
